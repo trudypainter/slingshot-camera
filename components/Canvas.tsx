@@ -310,24 +310,77 @@ export const Canvas: React.FC = () => {
           const context = canvas.getContext("2d");
           const video = cameraRef.current.querySelector("video");
 
+          // Log device information
+          const isIOS =
+            /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+            !(window as any).MSStream;
+          const isSafari = /^((?!chrome|android).)*safari/i.test(
+            navigator.userAgent
+          );
+          console.log(
+            `📱 CAPTURE DEBUG - Device: iOS=${isIOS}, Safari=${isSafari}, Mobile=${isMobile}, DPR=${window.devicePixelRatio}`
+          );
+
           if (context && video) {
+            // Log video element properties
+            console.log(`📹 CAPTURE DEBUG - Video element:`, {
+              videoWidth: video.videoWidth,
+              videoHeight: video.videoHeight,
+              offsetWidth: video.offsetWidth,
+              offsetHeight: video.offsetHeight,
+              clientWidth: video.clientWidth,
+              clientHeight: video.clientHeight,
+              style: {
+                width: video.style.width,
+                height: video.style.height,
+              },
+            });
+
+            // Log video tracks information
+            if (video.srcObject instanceof MediaStream) {
+              const videoTracks = video.srcObject.getVideoTracks();
+              if (videoTracks.length > 0) {
+                const track = videoTracks[0];
+                const settings = track.getSettings();
+                console.log(
+                  `📹 CAPTURE DEBUG - Video track settings:`,
+                  settings
+                );
+                console.log(
+                  `📹 CAPTURE DEBUG - Video track constraints:`,
+                  track.getConstraints()
+                );
+              }
+            }
+
             const viewfinderWidth = Math.abs(dragEnd.x - dragStart.x);
             const viewfinderHeight = Math.abs(dragEnd.y - dragStart.y);
+            console.log(
+              `🔍 CAPTURE DEBUG - Viewfinder dimensions: ${viewfinderWidth}x${viewfinderHeight}`
+            );
 
             // Determine the scale factor based on device
             // Use 3x scale on mobile for higher quality captures
             const scaleFactor = isMobile ? 3 : 1;
             console.log(
-              `Using scale factor: ${scaleFactor}x for image capture (isMobile: ${isMobile})`
+              `🔍 CAPTURE DEBUG - Using scale factor: ${scaleFactor}x for image capture`
             );
 
             // Set canvas size to match the viewfinder, but scaled up for higher resolution
             canvas.width = viewfinderWidth * scaleFactor;
             canvas.height = viewfinderHeight * scaleFactor;
+            console.log(
+              `🖼️ CAPTURE DEBUG - Canvas dimensions: ${canvas.width}x${canvas.height}`
+            );
 
             // Calculate the aspect ratios
             const viewfinderAspectRatio = viewfinderWidth / viewfinderHeight;
             const videoAspectRatio = video.videoWidth / video.videoHeight;
+            console.log(
+              `📐 CAPTURE DEBUG - Aspect ratios: viewfinder=${viewfinderAspectRatio.toFixed(
+                2
+              )}, video=${videoAspectRatio.toFixed(2)}`
+            );
 
             // Variables for source and destination rectangles
             let sx, sy, sw, sh, dx, dy, dw, dh;
@@ -360,31 +413,37 @@ export const Canvas: React.FC = () => {
               dh = canvas.height;
             }
 
+            console.log(
+              `🎯 CAPTURE DEBUG - Source rectangle: x=${sx.toFixed(
+                0
+              )}, y=${sy.toFixed(0)}, w=${sw.toFixed(0)}, h=${sh.toFixed(0)}`
+            );
+            console.log(
+              `🎯 CAPTURE DEBUG - Destination rectangle: x=${dx}, y=${dy}, w=${dw}, h=${dh}`
+            );
+
             // Check if we should mirror the image
             // Only mirror for front-facing cameras
             const shouldMirror = actualFacingMode !== "environment";
 
             console.log(
-              `Capturing image - Camera facing mode: ${actualFacingMode}, Should mirror: ${shouldMirror}`
+              `📸 CAPTURE DEBUG - Camera facing mode: ${actualFacingMode}, Should mirror: ${shouldMirror}`
             );
             console.log(
-              `Device info - isIOS: ${/iPad|iPhone|iPod/.test(
-                navigator.userAgent
-              )}, isSafari: ${/^((?!chrome|android).)*safari/i.test(
-                navigator.userAgent
-              )}`
-            );
-            console.log(
-              `Video dimensions: ${video.videoWidth}x${video.videoHeight}, Canvas dimensions: ${canvas.width}x${canvas.height}`
+              `📸 CAPTURE DEBUG - Video dimensions: ${video.videoWidth}x${video.videoHeight}, Canvas dimensions: ${canvas.width}x${canvas.height}`
             );
 
             // Scale the context to match our desired resolution
             context.scale(scaleFactor, scaleFactor);
+            console.log(`🔍 CAPTURE DEBUG - Context scaled by ${scaleFactor}x`);
 
             if (shouldMirror) {
               // Mirror the image horizontally for front camera
               context.translate(viewfinderWidth, 0);
               context.scale(-1, 1);
+              console.log(
+                `🔄 CAPTURE DEBUG - Applied horizontal mirroring for front camera`
+              );
 
               // Draw the video onto the canvas, properly cropped and positioned
               context.drawImage(
@@ -400,7 +459,9 @@ export const Canvas: React.FC = () => {
               );
             } else {
               // For back camera, don't mirror
-              console.log("Using back camera - not mirroring the image");
+              console.log(
+                `🔄 CAPTURE DEBUG - Using back camera - not mirroring the image`
+              );
               context.drawImage(
                 video,
                 sx,
@@ -416,9 +477,27 @@ export const Canvas: React.FC = () => {
 
             // Create a high-quality JPEG with minimal compression
             const imageQuality = 0.95; // 95% quality
+            console.log(
+              `💾 CAPTURE DEBUG - Creating image with quality: ${imageQuality}`
+            );
+
+            // Get the data URL and log its length as a proxy for size/quality
+            const dataUrl = canvas.toDataURL("image/jpeg", imageQuality);
+            console.log(
+              `💾 CAPTURE DEBUG - Data URL length: ${dataUrl.length} characters`
+            );
+
+            // Try to estimate the resolution from the data URL size
+            const estimatedResolution = Math.sqrt(dataUrl.length / 4);
+            console.log(
+              `💾 CAPTURE DEBUG - Estimated image resolution: ~${estimatedResolution.toFixed(
+                0
+              )} pixels per side`
+            );
+
             const newImage: ImageType = {
               id: newImageId,
-              src: canvas.toDataURL("image/jpeg", imageQuality),
+              src: dataUrl,
               position: {
                 x: Math.min(dragStart.x, dragEnd.x),
                 y: Math.min(dragStart.y, dragEnd.y),
@@ -429,7 +508,20 @@ export const Canvas: React.FC = () => {
               },
               mirrored: shouldMirror,
             };
+
+            console.log(`✅ CAPTURE DEBUG - Final image added to canvas:`, {
+              id: newImageId,
+              position: newImage.position,
+              size: newImage.size,
+              mirrored: shouldMirror,
+              dataUrlLength: dataUrl.length,
+            });
+
             setImages((prevImages) => [...prevImages, newImage]);
+          } else {
+            console.error(
+              `❌ CAPTURE DEBUG - Failed to get context or video element`
+            );
           }
         }
       }
@@ -797,7 +889,7 @@ export const Canvas: React.FC = () => {
               .canShare}`
           );
 
-          const websiteUrl = "https://slingshot-camera.vercel.app/";
+          const websiteUrl = "https://slingshot.trudy.computer/";
           // No additional text, just the URL
 
           if (isIOS && isSafari && (navigator as any).canShare) {
