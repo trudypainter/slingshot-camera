@@ -26,6 +26,8 @@ export const Canvas: React.FC = () => {
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [currentDeviceIndex, setCurrentDeviceIndex] = useState<number>(0);
   const isMobile = useIsMobile();
+  const [actualFacingMode, setActualFacingMode] =
+    useState<string>("environment");
 
   useEffect(() => {
     const handleResize = () => {
@@ -292,22 +294,53 @@ export const Canvas: React.FC = () => {
               dh = canvas.height;
             }
 
-            // Mirror the image horizontally
-            context.translate(canvas.width, 0);
-            context.scale(-1, 1);
+            // Check if we should mirror the image
+            // Only mirror for front-facing cameras
+            const shouldMirror = actualFacingMode !== "environment";
 
-            // Draw the video onto the canvas, properly cropped and positioned
-            context.drawImage(
-              video,
-              sx,
-              sy,
-              sw,
-              sh, // Source rectangle (what part of the video to capture)
-              0,
-              0,
-              canvas.width,
-              canvas.height // Destination rectangle (where to place it on the canvas)
+            console.log(
+              `Capturing image - Camera facing mode: ${actualFacingMode}, Should mirror: ${shouldMirror}`
             );
+            console.log(
+              `Device info - isIOS: ${/iPad|iPhone|iPod/.test(
+                navigator.userAgent
+              )}, isSafari: ${/^((?!chrome|android).)*safari/i.test(
+                navigator.userAgent
+              )}`
+            );
+
+            if (shouldMirror) {
+              // Mirror the image horizontally for front camera
+              context.translate(canvas.width, 0);
+              context.scale(-1, 1);
+
+              // Draw the video onto the canvas, properly cropped and positioned
+              context.drawImage(
+                video,
+                sx,
+                sy,
+                sw,
+                sh, // Source rectangle (what part of the video to capture)
+                0,
+                0,
+                canvas.width,
+                canvas.height // Destination rectangle (where to place it on the canvas)
+              );
+            } else {
+              // For back camera, don't mirror
+              console.log("Using back camera - not mirroring the image");
+              context.drawImage(
+                video,
+                sx,
+                sy,
+                sw,
+                sh, // Source rectangle (what part of the video to capture)
+                0,
+                0,
+                canvas.width,
+                canvas.height // Destination rectangle (where to place it on the canvas)
+              );
+            }
 
             const newImage: ImageType = {
               id: newImageId,
@@ -320,7 +353,7 @@ export const Canvas: React.FC = () => {
                 width: viewfinderWidth,
                 height: viewfinderHeight,
               },
-              mirrored: true,
+              mirrored: shouldMirror,
             };
             setImages((prevImages) => [...prevImages, newImage]);
           }
@@ -330,7 +363,8 @@ export const Canvas: React.FC = () => {
     setIsDragging(false);
     setDragStart(null);
     setDragEnd(null);
-  }, [dragStart, dragEnd, isDragging]);
+    setViewfinderRect({ left: 0, top: 0, width: 0, height: 0 });
+  }, [isDragging, dragStart, dragEnd, actualFacingMode]);
 
   // Mouse event handlers
   const handleMouseDown = useCallback(
@@ -877,6 +911,12 @@ export const Canvas: React.FC = () => {
     };
   }, []);
 
+  // In the Canvas component, add a handler for facing mode changes
+  const handleFacingModeChange = useCallback((facingMode: string) => {
+    console.log(`Canvas received facing mode update: ${facingMode}`);
+    setActualFacingMode(facingMode);
+  }, []);
+
   return (
     <div
       ref={canvasRef}
@@ -910,7 +950,10 @@ export const Canvas: React.FC = () => {
             border: isDragging ? "2px solid #3b82f6" : "none",
           }}
         >
-          <Camera deviceId={currentDeviceId} />
+          <Camera
+            deviceId={currentDeviceId}
+            onFacingModeChange={handleFacingModeChange}
+          />
         </div>
       )}
 

@@ -7,9 +7,13 @@ import { FlipHorizontal } from "lucide-react";
 
 interface CameraProps {
   deviceId?: string;
+  onFacingModeChange?: (facingMode: string) => void;
 }
 
-export const Camera: React.FC<CameraProps> = ({ deviceId }) => {
+export const Camera: React.FC<CameraProps> = ({
+  deviceId,
+  onFacingModeChange,
+}) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const previousDeviceIdRef = useRef<string | undefined>(deviceId);
   const [shouldStartCamera, setShouldStartCamera] = useState(true);
@@ -62,6 +66,16 @@ export const Camera: React.FC<CameraProps> = ({ deviceId }) => {
       }
     }
   }, [stream]);
+
+  // Notify parent component when facing mode changes
+  useEffect(() => {
+    if (onFacingModeChange && actualFacingMode) {
+      console.log(
+        `Camera notifying parent of facing mode change: ${actualFacingMode}`
+      );
+      onFacingModeChange(actualFacingMode);
+    }
+  }, [actualFacingMode, onFacingModeChange]);
 
   // Determine if we should flip the video horizontally
   // Only flip for front-facing cameras (user mode)

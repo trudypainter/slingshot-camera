@@ -39,6 +39,16 @@ export const PastedImage: React.FC<PastedImageProps> = ({ image }) => {
           // Clear the canvas before drawing
           ctx.clearRect(0, 0, displayWidth, displayHeight);
 
+          // Apply mirroring if needed
+          if (image.mirrored) {
+            console.log(`Rendering mirrored image (from front camera)`);
+            // No need to mirror again in the PastedImage component
+            // as the mirroring was already applied during capture
+          } else {
+            console.log(`Rendering non-mirrored image (from back camera)`);
+            // No transformation needed for back camera images
+          }
+
           // Draw the image exactly as it was saved
           ctx.drawImage(img, 0, 0, displayWidth, displayHeight);
 
