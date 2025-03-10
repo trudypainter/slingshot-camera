@@ -74,18 +74,6 @@ export const Camera: React.FC<CameraProps> = ({ deviceId }) => {
           shouldFlipHorizontally ? "scale-x-[-1]" : ""
         }`}
       />
-      {isMobile && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            switchCamera();
-          }}
-          className="absolute bottom-2 right-2 bg-white bg-opacity-70 p-2 rounded-full z-10"
-          disabled={isLoading}
-        >
-          <FlipHorizontal size={20} />
-        </button>
-      )}
     </>
   );
 };

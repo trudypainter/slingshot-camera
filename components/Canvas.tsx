@@ -7,6 +7,7 @@ import { Camera } from "./Camera";
 import { PastedImage } from "./PastedImage";
 import { MenuBar } from "./MenuBar";
 import { Crosshair } from "lucide-react";
+import { useIsMobile } from "../hooks/use-mobile";
 
 export const Canvas: React.FC = () => {
   const [images, setImages] = useState<ImageType[]>([]);
@@ -24,6 +25,7 @@ export const Canvas: React.FC = () => {
   const cameraRef = useRef<HTMLDivElement>(null);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [currentDeviceIndex, setCurrentDeviceIndex] = useState<number>(0);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     const handleResize = () => {
@@ -328,62 +330,192 @@ export const Canvas: React.FC = () => {
     // Update current device index
     setCurrentDeviceIndex(nextDeviceIndex);
 
-    // If camera is not visible, make it visible
-    if (!isCameraVisible) {
+    // Force camera remount by toggling isCameraVisible
+    // This ensures the camera is restarted with the new device
+    setIsCameraVisible(false);
+    setTimeout(() => {
       setIsCameraVisible(true);
+    }, 50);
+  }, [videoDevices, currentDeviceIndex]);
+
+  const handleDownload = useCallback(() => {
+    if (images.length === 0) {
+      console.log("No images to download");
+      return;
     }
-    // We don't need to force remount anymore since we've improved the Camera component
-  }, [videoDevices, currentDeviceIndex, isCameraVisible]);
+
+    // Create a canvas with all images
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    if (ctx) {
+      // Set canvas size to match the container
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      // Fill with white background
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw all images onto the canvas
+      images.forEach((image) => {
+        const img = new Image();
+        img.src = image.src;
+        ctx.drawImage(
+          img,
+          image.position.x,
+          image.position.y,
+          image.size.width,
+          image.size.height
+        );
+      });
+
+      // Convert to blob and download
+      canvas.toBlob((blob) => {
+        if (blob) {
+          try {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "slingshot-collage.png";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          } catch (error) {
+            console.error("Error downloading:", error);
+          }
+        }
+      }, "image/png");
+    }
+  }, [images]);
 
   const handleShare = useCallback(() => {
-    if (navigator.share && images.length > 0) {
-      // Create a canvas with all images
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
+    if (images.length === 0) {
+      console.log("No images to share");
+      return;
+    }
 
-      if (ctx) {
-        // Set canvas size to match the container
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+    // Create a canvas with all images
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
 
-        // Fill with white background
-        ctx.fillStyle = "white";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (ctx) {
+      // Set canvas size to match the container
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
 
-        // Draw all images onto the canvas
-        images.forEach((image) => {
-          const img = new Image();
-          img.src = image.src;
-          ctx.drawImage(
-            img,
-            image.position.x,
-            image.position.y,
-            image.size.width,
-            image.size.height
-          );
-        });
+      // Fill with white background
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Convert to blob and share
-        canvas.toBlob(async (blob) => {
-          if (blob) {
-            try {
+      // Draw all images onto the canvas
+      images.forEach((image) => {
+        const img = new Image();
+        img.src = image.src;
+        ctx.drawImage(
+          img,
+          image.position.x,
+          image.position.y,
+          image.size.width,
+          image.size.height
+        );
+      });
+
+      // Convert to blob and share
+      canvas.toBlob(async (blob) => {
+        if (blob) {
+          try {
+            // Check if we're on iOS Safari
+            const isIOS =
+              /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+              !(window as any).MSStream;
+            const isSafari = /^((?!chrome|android).)*safari/i.test(
+              navigator.userAgent
+            );
+
+            const websiteUrl = "https://slingshot-camera.vercel.app/";
+            const shareText = `Check out my Slingshot collage! ${websiteUrl}`;
+
+            if (isIOS && isSafari && (navigator as any).canShare) {
+              // Use iOS Safari specific share API
+              const file = new File([blob], "slingshot-collage.png", {
+                type: "image/png",
+              });
+
+              const shareData = {
+                files: [file],
+                text: shareText,
+                url: websiteUrl,
+              };
+
+              if ((navigator as any).canShare(shareData)) {
+                await (navigator as any).share(shareData);
+              } else {
+                console.log("File sharing not supported on this device");
+                // Fallback to regular Web Share API without files
+                await navigator.share({
+                  title: "Slingshot Collage",
+                  text: shareText,
+                  url: websiteUrl,
+                });
+              }
+            } else if (navigator.share) {
+              // Standard Web Share API
               const file = new File([blob], "slingshot-collage.png", {
                 type: "image/png",
               });
               await navigator.share({
                 files: [file],
                 title: "Slingshot Collage",
+                text: shareText,
+                url: websiteUrl,
               });
-            } catch (error) {
-              console.error("Error sharing:", error);
+            } else {
+              // Fallback for browsers without Web Share API - download the image
+              handleDownload();
             }
+          } catch (error) {
+            console.error("Error sharing:", error);
+            // If sharing fails, fall back to download
+            handleDownload();
           }
-        }, "image/png");
-      }
-    } else {
-      console.log("Web Share API not supported or no images to share");
+        }
+      }, "image/png");
     }
   }, [images]);
+
+  // Add a handler for directly selecting a camera device
+  const handleSelectDevice = useCallback(
+    (index: number) => {
+      if (
+        index >= 0 &&
+        index < videoDevices.length &&
+        index !== currentDeviceIndex
+      ) {
+        console.log(
+          `Directly selecting camera: ${currentDeviceIndex} -> ${index}`
+        );
+        const selectedDevice = videoDevices[index];
+        console.log(
+          `Selected device: ${selectedDevice.label || "Unnamed device"} (${
+            selectedDevice.deviceId
+          })`
+        );
+
+        // Update current device index
+        setCurrentDeviceIndex(index);
+
+        // Force camera remount by toggling isCameraVisible
+        // This ensures the camera is restarted with the new device
+        setIsCameraVisible(false);
+        setTimeout(() => {
+          setIsCameraVisible(true);
+        }, 50);
+      }
+    },
+    [videoDevices, currentDeviceIndex]
+  );
 
   // Add this useEffect to prevent scrolling on mobile
   useEffect(() => {
@@ -481,7 +613,11 @@ export const Canvas: React.FC = () => {
         onUndo={handleUndo}
         onToggleCamera={handleToggleCamera}
         onShare={handleShare}
+        onDownload={handleDownload}
         onClearCanvas={handleClearCanvas}
+        videoDevices={videoDevices}
+        currentDeviceIndex={currentDeviceIndex}
+        onSelectDevice={handleSelectDevice}
       />
     </div>
   );
