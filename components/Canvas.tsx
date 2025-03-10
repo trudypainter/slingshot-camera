@@ -92,11 +92,11 @@ export const Canvas: React.FC = () => {
                 !device.label.toLowerCase().includes("dual")
             );
 
-          // Create filtered list with front camera first (if available)
+          // Create filtered list with back camera first (for iOS)
           const filteredDevices = [];
-          if (frontCamera) filteredDevices.push(frontCamera);
-          if (backCamera && backCamera !== frontCamera)
-            filteredDevices.push(backCamera);
+          if (backCamera) filteredDevices.push(backCamera); // Put back camera first
+          if (frontCamera && frontCamera !== backCamera)
+            filteredDevices.push(frontCamera);
 
           // If we couldn't find specific cameras, just use the first two
           if (filteredDevices.length === 0) {
@@ -111,7 +111,31 @@ export const Canvas: React.FC = () => {
           setVideoDevices(filteredDevices);
         } else {
           // For non-iOS or when there are only 1-2 cameras, use all available devices
-          setVideoDevices(videoInputs);
+          // But for mobile devices, try to identify and prioritize the back camera
+          if (isMobile && videoInputs.length > 1) {
+            // Try to find the back camera
+            const backCameraIndex = videoInputs.findIndex(
+              (device) =>
+                device.label.toLowerCase().includes("back") ||
+                device.label.toLowerCase().includes("environment") ||
+                device.label.toLowerCase().includes("rear")
+            );
+
+            if (backCameraIndex !== -1) {
+              console.log(
+                `Found back camera at index ${backCameraIndex}, setting as default`
+              );
+              // Reorder the array to put the back camera first
+              const reorderedDevices = [...videoInputs];
+              const backCamera = reorderedDevices.splice(backCameraIndex, 1)[0];
+              reorderedDevices.unshift(backCamera);
+              setVideoDevices(reorderedDevices);
+            } else {
+              setVideoDevices(videoInputs);
+            }
+          } else {
+            setVideoDevices(videoInputs);
+          }
         }
 
         // Set initial device index to 0 (first camera)
@@ -167,11 +191,11 @@ export const Canvas: React.FC = () => {
               !device.label.toLowerCase().includes("dual")
           );
 
-        // Create filtered list with front camera first (if available)
+        // Create filtered list with back camera first (for iOS)
         const filteredDevices = [];
-        if (frontCamera) filteredDevices.push(frontCamera);
-        if (backCamera && backCamera !== frontCamera)
-          filteredDevices.push(backCamera);
+        if (backCamera) filteredDevices.push(backCamera); // Put back camera first
+        if (frontCamera && frontCamera !== backCamera)
+          filteredDevices.push(frontCamera);
 
         // If we couldn't find specific cameras, just use the first two
         if (filteredDevices.length === 0) {
@@ -186,7 +210,31 @@ export const Canvas: React.FC = () => {
         setVideoDevices(filteredDevices);
       } else {
         // For non-iOS or when there are only 1-2 cameras, use all available devices
-        setVideoDevices(videoInputs);
+        // But for mobile devices, try to identify and prioritize the back camera
+        if (isMobile && videoInputs.length > 1) {
+          // Try to find the back camera
+          const backCameraIndex = videoInputs.findIndex(
+            (device) =>
+              device.label.toLowerCase().includes("back") ||
+              device.label.toLowerCase().includes("environment") ||
+              device.label.toLowerCase().includes("rear")
+          );
+
+          if (backCameraIndex !== -1) {
+            console.log(
+              `Found back camera at index ${backCameraIndex}, setting as default`
+            );
+            // Reorder the array to put the back camera first
+            const reorderedDevices = [...videoInputs];
+            const backCamera = reorderedDevices.splice(backCameraIndex, 1)[0];
+            reorderedDevices.unshift(backCamera);
+            setVideoDevices(reorderedDevices);
+          } else {
+            setVideoDevices(videoInputs);
+          }
+        } else {
+          setVideoDevices(videoInputs);
+        }
       }
     };
 
@@ -206,15 +254,26 @@ export const Canvas: React.FC = () => {
   }, [videoDevices, currentDeviceIndex]);
 
   // Common function to start drag (for both mouse and touch)
-  const startDrag = useCallback((x: number, y: number) => {
-    if (canvasRef.current) {
-      setDragStart({ x, y });
-      setDragEnd({ x, y });
-      setIsDragging(true);
-      setIsCameraVisible(true);
-      setViewfinderRect({ left: x, top: y, width: 0, height: 0 });
-    }
-  }, []);
+  const startDrag = useCallback(
+    (x: number, y: number) => {
+      if (canvasRef.current) {
+        setDragStart({ x, y });
+        setDragEnd({ x, y });
+        setIsDragging(true);
+
+        // Make sure we're using the back camera on mobile devices when first starting
+        if (!isCameraVisible && isMobile) {
+          console.log("Starting drag with back camera on mobile");
+          // Ensure we're using the first device (which should be the back camera based on our ordering)
+          setCurrentDeviceIndex(0);
+        }
+
+        setIsCameraVisible(true);
+        setViewfinderRect({ left: x, top: y, width: 0, height: 0 });
+      }
+    },
+    [isCameraVisible, isMobile]
+  );
 
   // Common function to update drag (for both mouse and touch)
   const updateDrag = useCallback(
@@ -255,9 +314,16 @@ export const Canvas: React.FC = () => {
             const viewfinderWidth = Math.abs(dragEnd.x - dragStart.x);
             const viewfinderHeight = Math.abs(dragEnd.y - dragStart.y);
 
-            // Set canvas size to match the viewfinder
-            canvas.width = viewfinderWidth;
-            canvas.height = viewfinderHeight;
+            // Determine the scale factor based on device
+            // Use 3x scale on mobile for higher quality captures
+            const scaleFactor = isMobile ? 3 : 1;
+            console.log(
+              `Using scale factor: ${scaleFactor}x for image capture (isMobile: ${isMobile})`
+            );
+
+            // Set canvas size to match the viewfinder, but scaled up for higher resolution
+            canvas.width = viewfinderWidth * scaleFactor;
+            canvas.height = viewfinderHeight * scaleFactor;
 
             // Calculate the aspect ratios
             const viewfinderAspectRatio = viewfinderWidth / viewfinderHeight;
@@ -308,10 +374,16 @@ export const Canvas: React.FC = () => {
                 navigator.userAgent
               )}`
             );
+            console.log(
+              `Video dimensions: ${video.videoWidth}x${video.videoHeight}, Canvas dimensions: ${canvas.width}x${canvas.height}`
+            );
+
+            // Scale the context to match our desired resolution
+            context.scale(scaleFactor, scaleFactor);
 
             if (shouldMirror) {
               // Mirror the image horizontally for front camera
-              context.translate(canvas.width, 0);
+              context.translate(viewfinderWidth, 0);
               context.scale(-1, 1);
 
               // Draw the video onto the canvas, properly cropped and positioned
@@ -323,8 +395,8 @@ export const Canvas: React.FC = () => {
                 sh, // Source rectangle (what part of the video to capture)
                 0,
                 0,
-                canvas.width,
-                canvas.height // Destination rectangle (where to place it on the canvas)
+                viewfinderWidth,
+                viewfinderHeight // Destination rectangle (where to place it on the canvas)
               );
             } else {
               // For back camera, don't mirror
@@ -337,14 +409,16 @@ export const Canvas: React.FC = () => {
                 sh, // Source rectangle (what part of the video to capture)
                 0,
                 0,
-                canvas.width,
-                canvas.height // Destination rectangle (where to place it on the canvas)
+                viewfinderWidth,
+                viewfinderHeight // Destination rectangle (where to place it on the canvas)
               );
             }
 
+            // Create a high-quality JPEG with minimal compression
+            const imageQuality = 0.95; // 95% quality
             const newImage: ImageType = {
               id: newImageId,
-              src: canvas.toDataURL("image/jpeg"),
+              src: canvas.toDataURL("image/jpeg", imageQuality),
               position: {
                 x: Math.min(dragStart.x, dragEnd.x),
                 y: Math.min(dragStart.y, dragEnd.y),
@@ -364,7 +438,7 @@ export const Canvas: React.FC = () => {
     setDragStart(null);
     setDragEnd(null);
     setViewfinderRect({ left: 0, top: 0, width: 0, height: 0 });
-  }, [isDragging, dragStart, dragEnd, actualFacingMode]);
+  }, [isDragging, dragStart, dragEnd, actualFacingMode, isMobile]);
 
   // Mouse event handlers
   const handleMouseDown = useCallback(
@@ -589,6 +663,14 @@ export const Canvas: React.FC = () => {
 
   // Create a high-resolution canvas for export
   const createHighResCanvas = (images: ImageType[], scale: number = 2) => {
+    // For mobile devices, use a higher scale factor unless explicitly specified
+    if (isMobile && scale === 2) {
+      scale = 3; // Use 3x scale for mobile by default
+      console.log(
+        `Mobile device detected, increasing export resolution to ${scale}x`
+      );
+    }
+
     // Create a canvas with all images
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
@@ -598,6 +680,10 @@ export const Canvas: React.FC = () => {
     // Set canvas size to match the container but at higher resolution
     canvas.width = window.innerWidth * scale;
     canvas.height = window.innerHeight * scale;
+
+    console.log(
+      `Creating high-res canvas at ${scale}x scale: ${canvas.width}x${canvas.height}`
+    );
 
     // Fill with white background
     ctx.fillStyle = "white";
@@ -629,17 +715,24 @@ export const Canvas: React.FC = () => {
       return;
     }
 
-    // Create a high-resolution canvas (3x scale for download)
-    const canvas = createHighResCanvas(images, 3);
+    // Create a high-resolution canvas (4x scale for download on mobile, 3x on desktop)
+    const downloadScale = isMobile ? 4 : 3;
+    console.log(
+      `Using ${downloadScale}x scale for download (isMobile: ${isMobile})`
+    );
+
+    const canvas = createHighResCanvas(images, downloadScale);
     if (!canvas) {
       console.error("Failed to create canvas for download");
       return;
     }
 
-    // Convert to blob and download
+    // Convert to blob and download with high quality
     canvas.toBlob((blob) => {
       if (blob) {
-        console.log("✅ Canvas: Blob created successfully for download");
+        console.log(
+          `✅ Canvas: Blob created successfully for download (${blob.size} bytes)`
+        );
         try {
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
@@ -657,7 +750,7 @@ export const Canvas: React.FC = () => {
         console.error("❌ Canvas: Failed to create blob for download");
       }
     }, "image/png");
-  }, [images]);
+  }, [images, isMobile]);
 
   const handleShare = useCallback(() => {
     console.log("📤 Canvas: handleShare started");
@@ -666,17 +759,24 @@ export const Canvas: React.FC = () => {
       return;
     }
 
-    // Create a high-resolution canvas (2x scale for sharing)
-    const canvas = createHighResCanvas(images, 2);
+    // Create a high-resolution canvas (3x scale for sharing on mobile, 2x on desktop)
+    const shareScale = isMobile ? 3 : 2;
+    console.log(
+      `Using ${shareScale}x scale for sharing (isMobile: ${isMobile})`
+    );
+
+    const canvas = createHighResCanvas(images, shareScale);
     if (!canvas) {
       console.error("Failed to create canvas for sharing");
       return;
     }
 
-    // Convert to blob and share
+    // Convert to blob and share with high quality
     canvas.toBlob(async (blob) => {
       if (blob) {
-        console.log("✅ Canvas: Blob created successfully for sharing");
+        console.log(
+          `✅ Canvas: Blob created successfully for sharing (${blob.size} bytes)`
+        );
         try {
           // Check if we're on iOS Safari
           const isIOS =
@@ -756,7 +856,7 @@ export const Canvas: React.FC = () => {
         console.error("❌ Canvas: Failed to create blob for sharing");
       }
     }, "image/png");
-  }, [images, handleDownload]);
+  }, [images, handleDownload, isMobile]);
 
   // Add a handler for directly selecting a camera device
   const handleSelectDevice = useCallback(
@@ -916,6 +1016,25 @@ export const Canvas: React.FC = () => {
     console.log(`Canvas received facing mode update: ${facingMode}`);
     setActualFacingMode(facingMode);
   }, []);
+
+  // Log camera setup when component mounts or when devices/index changes
+  useEffect(() => {
+    if (videoDevices.length > 0) {
+      const currentDevice = videoDevices[currentDeviceIndex];
+      console.log(`Current camera setup:`);
+      console.log(`- Device index: ${currentDeviceIndex}`);
+      console.log(`- Device label: ${currentDevice?.label || "Unknown"}`);
+      console.log(`- Is mobile: ${isMobile}`);
+      console.log(`- Is iOS: ${/iPad|iPhone|iPod/.test(navigator.userAgent)}`);
+
+      // Check if it's likely a back camera based on the label
+      const isLikelyBackCamera =
+        currentDevice?.label?.toLowerCase().includes("back") ||
+        currentDevice?.label?.toLowerCase().includes("environment") ||
+        currentDevice?.label?.toLowerCase().includes("rear");
+      console.log(`- Is likely back camera: ${isLikelyBackCamera}`);
+    }
+  }, [videoDevices, currentDeviceIndex, isMobile]);
 
   return (
     <div
