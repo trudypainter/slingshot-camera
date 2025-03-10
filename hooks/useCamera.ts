@@ -31,32 +31,58 @@ export function useCamera(deviceId?: string) {
 
           // Get facingMode from settings
           const detectedFacingMode = settings.facingMode;
-          setActualFacingMode(detectedFacingMode);
-          console.log(
-            `Detected camera facing mode: ${detectedFacingMode || "unknown"}`
-          );
 
-          // If no facingMode in settings, try to guess from label
-          if (!detectedFacingMode && videoTrack.label) {
+          if (detectedFacingMode) {
+            // If the browser provides a facingMode, trust it
+            setActualFacingMode(detectedFacingMode);
+            console.log(
+              `Detected camera facing mode from settings: ${detectedFacingMode}`
+            );
+          } else if (videoTrack.label) {
+            // If no facingMode in settings, try to guess from label
             const label = videoTrack.label.toLowerCase();
+
+            // Check if it's clearly a back/environment camera
             if (
               label.includes("back") ||
               label.includes("environment") ||
               label.includes("rear")
             ) {
               setActualFacingMode("environment");
-              console.log("Inferred facing mode from label: environment");
-            } else if (
+              console.log(
+                "Inferred facing mode from label: environment (back camera)"
+              );
+            }
+            // Check if it's clearly a front/user camera
+            else if (
               label.includes("front") ||
               label.includes("user") ||
-              label.includes("selfie")
+              label.includes("selfie") ||
+              label.includes("facetime")
             ) {
               setActualFacingMode("user");
-              console.log("Inferred facing mode from label: user");
+              console.log(
+                "Inferred facing mode from label: user (front camera)"
+              );
             }
+            // Default behavior for unknown cameras - assume user-facing (mirrored)
+            else {
+              setActualFacingMode("user");
+              console.log(
+                `Camera with unknown type "${videoTrack.label}" - defaulting to user mode (mirrored)`
+              );
+            }
+          } else {
+            // No label and no facingMode - default to user mode
+            setActualFacingMode("user");
+            console.log(
+              "No camera label or facingMode available - defaulting to user mode (mirrored)"
+            );
           }
         } catch (error) {
           console.error("Error getting camera track settings:", error);
+          // Default to user mode on error
+          setActualFacingMode("user");
         }
       }
     } else {

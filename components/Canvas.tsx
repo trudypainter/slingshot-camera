@@ -423,11 +423,14 @@ export const Canvas: React.FC = () => {
             );
 
             // Check if we should mirror the image
-            // Only mirror for front-facing cameras
+            // Only mirror for front-facing cameras (user mode)
+            // If actualFacingMode is undefined, default to mirroring (user mode)
             const shouldMirror = actualFacingMode !== "environment";
 
             console.log(
-              `📸 CAPTURE DEBUG - Camera facing mode: ${actualFacingMode}, Should mirror: ${shouldMirror}`
+              `📸 CAPTURE DEBUG - Camera facing mode: ${
+                actualFacingMode || "unknown"
+              }, Should mirror: ${shouldMirror}`
             );
             console.log(
               `📸 CAPTURE DEBUG - Video dimensions: ${video.videoWidth}x${video.videoHeight}, Canvas dimensions: ${canvas.width}x${canvas.height}`
@@ -754,7 +757,10 @@ export const Canvas: React.FC = () => {
   }, [videoDevices, currentDeviceIndex]);
 
   // Create a high-resolution canvas for export
-  const createHighResCanvas = (images: ImageType[], scale: number = 2) => {
+  const createHighResCanvas = (
+    images: ImageType[],
+    scale: number = 2
+  ): Promise<HTMLCanvasElement | null> => {
     // For mobile devices, use a higher scale factor unless explicitly specified
     if (isMobile && scale === 2) {
       scale = 3; // Use 3x scale for mobile by default
@@ -763,41 +769,88 @@ export const Canvas: React.FC = () => {
       );
     }
 
-    // Create a canvas with all images
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
+    console.log(`Creating high-res canvas with ${images.length} images`);
 
-    if (!ctx) return null;
+    return new Promise<HTMLCanvasElement | null>((resolve) => {
+      // Create a canvas with all images
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
 
-    // Set canvas size to match the container but at higher resolution
-    canvas.width = window.innerWidth * scale;
-    canvas.height = window.innerHeight * scale;
+      if (!ctx) {
+        console.error("Failed to get canvas context");
+        resolve(null);
+        return;
+      }
 
-    console.log(
-      `Creating high-res canvas at ${scale}x scale: ${canvas.width}x${canvas.height}`
-    );
+      // Set canvas size to match the container but at higher resolution
+      canvas.width = window.innerWidth * scale;
+      canvas.height = window.innerHeight * scale;
 
-    // Fill with white background
-    ctx.fillStyle = "white";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Scale the context to draw everything at higher resolution
-    ctx.scale(scale, scale);
-
-    // Draw all images onto the canvas
-    images.forEach((image) => {
-      const img = new Image();
-      img.src = image.src;
-      ctx.drawImage(
-        img,
-        image.position.x,
-        image.position.y,
-        image.size.width,
-        image.size.height
+      console.log(
+        `Creating high-res canvas at ${scale}x scale: ${canvas.width}x${canvas.height}`
       );
-    });
 
-    return canvas;
+      // Fill with white background
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Scale the context to draw everything at higher resolution
+      ctx.scale(scale, scale);
+
+      // If there are no images, resolve immediately with the empty canvas
+      if (images.length === 0) {
+        console.log("No images to draw on high-res canvas");
+        resolve(canvas);
+        return;
+      }
+
+      // Load all images first
+      const imagePromises = images.map((image, index) => {
+        return new Promise<void>((resolveImage) => {
+          console.log(
+            `Loading image ${index} with id: ${image.id} for export canvas`
+          );
+          const img = new Image();
+
+          img.onload = () => {
+            console.log(
+              `Image ${index} with id: ${image.id} loaded successfully`
+            );
+            // Draw the image to the canvas
+            ctx.drawImage(
+              img,
+              image.position.x,
+              image.position.y,
+              image.size.width,
+              image.size.height
+            );
+            console.log(
+              `Drew image ${index} with id: ${image.id} to export canvas`
+            );
+            resolveImage();
+          };
+
+          img.onerror = () => {
+            console.error(`Failed to load image ${index} with id: ${image.id}`);
+            resolveImage(); // Resolve anyway to not block the process
+          };
+
+          img.src = image.src;
+        });
+      });
+
+      // Wait for all images to be loaded and drawn
+      Promise.all(imagePromises)
+        .then(() => {
+          console.log(`All ${images.length} images drawn to high-res canvas`);
+          resolve(canvas);
+        })
+        .catch((error) => {
+          console.error("Error drawing images to canvas:", error);
+          // Still resolve with the canvas, even if some images failed
+          resolve(canvas);
+        });
+    });
   };
 
   const handleDownload = useCallback(() => {
@@ -813,35 +866,50 @@ export const Canvas: React.FC = () => {
       `Using ${downloadScale}x scale for download (isMobile: ${isMobile})`
     );
 
-    const canvas = createHighResCanvas(images, downloadScale);
-    if (!canvas) {
-      console.error("Failed to create canvas for download");
-      return;
-    }
+    // Create a deep copy of the images array to ensure we're working with fresh data
+    const imagesToDownload = images.map((img) => ({
+      ...img,
+      id: img.id,
+      src: img.src,
+      position: { ...img.position },
+      size: { ...img.size },
+      mirrored: img.mirrored,
+    }));
 
-    // Convert to blob and download with high quality
-    canvas.toBlob((blob) => {
-      if (blob) {
-        console.log(
-          `✅ Canvas: Blob created successfully for download (${blob.size} bytes)`
-        );
-        try {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "slingshot-collage.png";
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-          console.log("✅ Canvas: Download initiated");
-        } catch (error) {
-          console.error("❌ Canvas: Error downloading:", error);
-        }
-      } else {
-        console.error("❌ Canvas: Failed to create blob for download");
+    console.log(
+      `Created deep copy of ${imagesToDownload.length} images for download`
+    );
+
+    createHighResCanvas(imagesToDownload, downloadScale).then((canvas) => {
+      if (!canvas) {
+        console.error("Failed to create canvas for download");
+        return;
       }
-    }, "image/png");
+
+      // Convert to blob and download with high quality
+      canvas.toBlob((blob) => {
+        if (blob) {
+          console.log(
+            `✅ Canvas: Blob created successfully for download (${blob.size} bytes)`
+          );
+          try {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "slingshot-collage.png";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            console.log("✅ Canvas: Download initiated");
+          } catch (error) {
+            console.error("❌ Canvas: Error downloading:", error);
+          }
+        } else {
+          console.error("❌ Canvas: Failed to create blob for download");
+        }
+      }, "image/png");
+    });
   }, [images, isMobile]);
 
   const handleShare = useCallback(() => {
@@ -851,103 +919,127 @@ export const Canvas: React.FC = () => {
       return;
     }
 
+    console.log(`Preparing to share ${images.length} images from canvas`);
+    // Log all images that will be included in the share
+    images.forEach((img, idx) => {
+      console.log(
+        `Image ${idx}: id=${img.id}, position=(${img.position.x},${img.position.y}), size=${img.size.width}x${img.size.height}`
+      );
+    });
+
     // Create a high-resolution canvas (3x scale for sharing on mobile, 2x on desktop)
     const shareScale = isMobile ? 3 : 2;
     console.log(
       `Using ${shareScale}x scale for sharing (isMobile: ${isMobile})`
     );
 
-    const canvas = createHighResCanvas(images, shareScale);
-    if (!canvas) {
-      console.error("Failed to create canvas for sharing");
-      return;
-    }
+    // Create a deep copy of the images array to ensure we're working with fresh data
+    const imagesToShare = images.map((img) => ({
+      ...img,
+      id: img.id,
+      src: img.src,
+      position: { ...img.position },
+      size: { ...img.size },
+      mirrored: img.mirrored,
+    }));
 
-    // Convert to blob and share with high quality
-    canvas.toBlob(async (blob) => {
-      if (blob) {
-        console.log(
-          `✅ Canvas: Blob created successfully for sharing (${blob.size} bytes)`
-        );
-        try {
-          // Check if we're on iOS Safari
-          const isIOS =
-            /iPad|iPhone|iPod/.test(navigator.userAgent) &&
-            !(window as any).MSStream;
-          const isSafari = /^((?!chrome|android).)*safari/i.test(
-            navigator.userAgent
-          );
+    console.log(
+      `Created deep copy of ${imagesToShare.length} images for sharing`
+    );
 
+    // Create a fresh canvas with all current images
+    createHighResCanvas(imagesToShare, shareScale).then((canvas) => {
+      if (!canvas) {
+        console.error("Failed to create canvas for sharing");
+        return;
+      }
+
+      // Convert to blob and share with high quality
+      canvas.toBlob(async (blob) => {
+        if (blob) {
           console.log(
-            `📱 Canvas: Device detection - isIOS: ${isIOS}, isSafari: ${isSafari}`
+            `✅ Canvas: Blob created successfully for sharing (${blob.size} bytes)`
           );
-          console.log(
-            `🌐 Canvas: navigator.share available: ${!!navigator.share}`
-          );
-          console.log(
-            `🌐 Canvas: navigator.canShare available: ${!!(navigator as any)
-              .canShare}`
-          );
+          try {
+            // Check if we're on iOS Safari
+            const isIOS =
+              /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+              !(window as any).MSStream;
+            const isSafari = /^((?!chrome|android).)*safari/i.test(
+              navigator.userAgent
+            );
 
-          const websiteUrl = "https://slingshot.trudy.computer/";
-          // No additional text, just the URL
+            console.log(
+              `📱 Canvas: Device detection - isIOS: ${isIOS}, isSafari: ${isSafari}`
+            );
+            console.log(
+              `🌐 Canvas: navigator.share available: ${!!navigator.share}`
+            );
+            console.log(
+              `🌐 Canvas: navigator.canShare available: ${!!(navigator as any)
+                .canShare}`
+            );
 
-          if (isIOS && isSafari && (navigator as any).canShare) {
-            // Use iOS Safari specific share API
-            const file = new File([blob], "slingshot-collage.png", {
-              type: "image/png",
-            });
+            const websiteUrl = "https://slingshot.trudy.computer/";
+            // No additional text, just the URL
 
-            const shareData = {
-              files: [file],
-              url: websiteUrl,
-              // No text field to keep it minimal
-            };
+            if (isIOS && isSafari && (navigator as any).canShare) {
+              // Use iOS Safari specific share API
+              const file = new File([blob], "slingshot-collage.png", {
+                type: "image/png",
+              });
 
-            console.log("📲 Canvas: Attempting iOS Safari share");
+              const shareData = {
+                files: [file],
+                url: websiteUrl,
+                // No text field to keep it minimal
+              };
 
-            if ((navigator as any).canShare(shareData)) {
-              console.log(
-                "👍 Canvas: iOS Safari canShare returned true, calling share()"
-              );
-              await (navigator as any).share(shareData);
-              console.log("✅ Canvas: Share completed successfully");
-            } else {
-              console.log("File sharing not supported on this device");
-              // Fallback to regular Web Share API without files
+              console.log("📲 Canvas: Attempting iOS Safari share");
+
+              if ((navigator as any).canShare(shareData)) {
+                console.log(
+                  "👍 Canvas: iOS Safari canShare returned true, calling share()"
+                );
+                await (navigator as any).share(shareData);
+                console.log("✅ Canvas: Share completed successfully");
+              } else {
+                console.log("File sharing not supported on this device");
+                // Fallback to regular Web Share API without files
+                await navigator.share({
+                  url: websiteUrl,
+                  // No title or text fields to keep it minimal
+                });
+              }
+            } else if (navigator.share) {
+              console.log("📲 Canvas: Attempting standard Web Share API");
+              // Standard Web Share API
+              const file = new File([blob], "slingshot-collage.png", {
+                type: "image/png",
+              });
               await navigator.share({
+                files: [file],
                 url: websiteUrl,
                 // No title or text fields to keep it minimal
               });
+              console.log("✅ Canvas: Share completed successfully");
+            } else {
+              console.log(
+                "❌ Canvas: Web Share API not supported, falling back to download"
+              );
+              // Fallback for browsers without Web Share API - download the image
+              handleDownload();
             }
-          } else if (navigator.share) {
-            console.log("📲 Canvas: Attempting standard Web Share API");
-            // Standard Web Share API
-            const file = new File([blob], "slingshot-collage.png", {
-              type: "image/png",
-            });
-            await navigator.share({
-              files: [file],
-              url: websiteUrl,
-              // No title or text fields to keep it minimal
-            });
-            console.log("✅ Canvas: Share completed successfully");
-          } else {
-            console.log(
-              "❌ Canvas: Web Share API not supported, falling back to download"
-            );
-            // Fallback for browsers without Web Share API - download the image
+          } catch (error) {
+            console.error("❌ Canvas: Error sharing:", error);
+            // If sharing fails, fall back to download
             handleDownload();
           }
-        } catch (error) {
-          console.error("❌ Canvas: Error sharing:", error);
-          // If sharing fails, fall back to download
-          handleDownload();
+        } else {
+          console.error("❌ Canvas: Failed to create blob for sharing");
         }
-      } else {
-        console.error("❌ Canvas: Failed to create blob for sharing");
-      }
-    }, "image/png");
+      }, "image/png");
+    });
   }, [images, handleDownload, isMobile]);
 
   // Add a handler for directly selecting a camera device

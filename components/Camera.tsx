@@ -171,6 +171,7 @@ export const Camera: React.FC<CameraProps> = ({
 
   // Determine if we should flip the video horizontally
   // Only flip for front-facing cameras (user mode)
+  // If actualFacingMode is undefined, default to flipping (user mode)
   const shouldFlipHorizontally = actualFacingMode !== "environment";
 
   // Log when facing mode changes
@@ -178,11 +179,15 @@ export const Camera: React.FC<CameraProps> = ({
     console.log(
       `Camera flip status: ${
         shouldFlipHorizontally
-          ? "flipped (front camera)"
-          : "not flipped (back camera)"
+          ? "flipped (front/user camera)"
+          : "not flipped (back/environment camera)"
       }`
     );
-    console.log(`Current facing mode: ${actualFacingMode || "unknown"}`);
+    console.log(
+      `Current facing mode: ${
+        actualFacingMode || "unknown (defaulting to user mode)"
+      }`
+    );
   }, [actualFacingMode, shouldFlipHorizontally]);
 
   return (
