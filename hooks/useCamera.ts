@@ -89,33 +89,79 @@ export function useCamera(deviceId?: string) {
         setStream(null);
       }
 
+      // Get device pixel ratio for high-DPI displays
+      const dpr = window.devicePixelRatio || 1;
+
+      // Calculate ideal resolution based on device capabilities
+      // Use higher resolution for higher DPR devices
+      const idealWidth = Math.min(1920, Math.floor(1280 * dpr));
+      const idealHeight = Math.min(1080, Math.floor(720 * dpr));
+
+      console.log(
+        `Requesting camera resolution: ${idealWidth}x${idealHeight} (DPR: ${dpr})`
+      );
+
       let constraints: MediaStreamConstraints = {
-        video: true,
+        video: {
+          width: { ideal: idealWidth },
+          height: { ideal: idealHeight },
+        },
       };
 
       // If deviceId is provided, use it
       if (deviceId) {
         console.log(`Starting camera with device ID: ${deviceId}`);
         constraints = {
-          video: { deviceId: { exact: deviceId } },
+          video: {
+            deviceId: { exact: deviceId },
+            width: { ideal: idealWidth },
+            height: { ideal: idealHeight },
+          },
         };
       } else if (isMobile) {
         // Otherwise use facingMode on mobile
         console.log(`Starting camera with facing mode: ${facingMode}`);
         constraints = {
-          video: { facingMode },
+          video: {
+            facingMode,
+            width: { ideal: idealWidth },
+            height: { ideal: idealHeight },
+          },
         };
-      } else {
-        console.log("Starting camera with default constraints");
       }
 
       const mediaStream = await navigator.mediaDevices.getUserMedia(
         constraints
       );
       console.log("Camera started successfully");
+
+      // Log the actual resolution we got
+      const videoTrack = mediaStream.getVideoTracks()[0];
+      if (videoTrack) {
+        const settings = videoTrack.getSettings();
+        console.log(
+          `Actual camera resolution: ${settings.width}x${settings.height}`
+        );
+      }
+
       setStream(mediaStream);
     } catch (error) {
       console.error("Error accessing camera:", error);
+
+      // If high resolution failed, try again with default constraints
+      try {
+        console.log("Falling back to default camera resolution");
+        const mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: deviceId ? { deviceId: { exact: deviceId } } : true,
+        });
+        console.log("Camera started successfully with default resolution");
+        setStream(mediaStream);
+      } catch (fallbackError) {
+        console.error(
+          "Error accessing camera with fallback settings:",
+          fallbackError
+        );
+      }
     } finally {
       setIsLoading(false);
     }

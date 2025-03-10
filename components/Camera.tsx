@@ -44,6 +44,22 @@ export const Camera: React.FC<CameraProps> = ({ deviceId }) => {
   useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
+
+      // Get video track to determine actual resolution
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        const settings = videoTrack.getSettings();
+
+        // Log the actual video dimensions
+        if (settings.width && settings.height) {
+          console.log(`Video dimensions: ${settings.width}x${settings.height}`);
+
+          // Optionally set video element attributes to match source dimensions
+          // This ensures the video is rendered at its native resolution
+          videoRef.current.setAttribute("width", settings.width.toString());
+          videoRef.current.setAttribute("height", settings.height.toString());
+        }
+      }
     }
   }, [stream]);
 

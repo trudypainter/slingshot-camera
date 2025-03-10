@@ -44,18 +44,78 @@ export const Canvas: React.FC = () => {
   useEffect(() => {
     async function getVideoDevices() {
       try {
-        // First, ensure we have permission to access media devices
+        // Request permission to access media devices
         await navigator.mediaDevices.getUserMedia({ video: true });
 
+        // Get list of video input devices
         const devices = await navigator.mediaDevices.enumerateDevices();
         const videoInputs = devices.filter(
           (device) => device.kind === "videoinput"
         );
 
         console.log("Available video devices:", videoInputs);
-        setVideoDevices(videoInputs);
+
+        // Check if we're on iOS Safari
+        const isIOS =
+          /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+          !(window as any).MSStream;
+        const isSafari = /^((?!chrome|android).)*safari/i.test(
+          navigator.userAgent
+        );
+        const isIOSSafari = isIOS && isSafari;
+
+        if (isIOSSafari && videoInputs.length > 2) {
+          console.log(
+            "iOS Safari detected with multiple cameras, filtering to front and back only"
+          );
+
+          // Find front camera (selfie)
+          const frontCamera = videoInputs.find(
+            (device) =>
+              device.label.toLowerCase().includes("front") ||
+              device.label.toLowerCase().includes("selfie") ||
+              device.label.toLowerCase().includes("user")
+          );
+
+          // Find basic back camera (prefer "Back Camera" if available)
+          const backCamera =
+            videoInputs.find((device) => device.label === "Back Camera") ||
+            videoInputs.find(
+              (device) =>
+                device.label.toLowerCase().includes("back") &&
+                !device.label.toLowerCase().includes("ultra") &&
+                !device.label.toLowerCase().includes("wide") &&
+                !device.label.toLowerCase().includes("telephoto") &&
+                !device.label.toLowerCase().includes("triple") &&
+                !device.label.toLowerCase().includes("dual")
+            );
+
+          // Create filtered list with front camera first (if available)
+          const filteredDevices = [];
+          if (frontCamera) filteredDevices.push(frontCamera);
+          if (backCamera && backCamera !== frontCamera)
+            filteredDevices.push(backCamera);
+
+          // If we couldn't find specific cameras, just use the first two
+          if (filteredDevices.length === 0) {
+            console.log(
+              "Could not identify specific cameras, using first two devices"
+            );
+            filteredDevices.push(videoInputs[0]);
+            if (videoInputs.length > 1) filteredDevices.push(videoInputs[1]);
+          }
+
+          console.log("Filtered video devices for iOS:", filteredDevices);
+          setVideoDevices(filteredDevices);
+        } else {
+          // For non-iOS or when there are only 1-2 cameras, use all available devices
+          setVideoDevices(videoInputs);
+        }
+
+        // Set initial device index to 0 (first camera)
+        setCurrentDeviceIndex(0);
       } catch (error) {
-        console.error("Error accessing media devices:", error);
+        console.error("Error accessing camera:", error);
       }
     }
 
@@ -69,7 +129,63 @@ export const Canvas: React.FC = () => {
         (device) => device.kind === "videoinput"
       );
       console.log("Updated video devices:", videoInputs);
-      setVideoDevices(videoInputs);
+
+      // Check if we're on iOS Safari
+      const isIOS =
+        /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+        !(window as any).MSStream;
+      const isSafari = /^((?!chrome|android).)*safari/i.test(
+        navigator.userAgent
+      );
+      const isIOSSafari = isIOS && isSafari;
+
+      if (isIOSSafari && videoInputs.length > 2) {
+        console.log(
+          "iOS Safari detected with multiple cameras, filtering to front and back only"
+        );
+
+        // Find front camera (selfie)
+        const frontCamera = videoInputs.find(
+          (device) =>
+            device.label.toLowerCase().includes("front") ||
+            device.label.toLowerCase().includes("selfie") ||
+            device.label.toLowerCase().includes("user")
+        );
+
+        // Find basic back camera (prefer "Back Camera" if available)
+        const backCamera =
+          videoInputs.find((device) => device.label === "Back Camera") ||
+          videoInputs.find(
+            (device) =>
+              device.label.toLowerCase().includes("back") &&
+              !device.label.toLowerCase().includes("ultra") &&
+              !device.label.toLowerCase().includes("wide") &&
+              !device.label.toLowerCase().includes("telephoto") &&
+              !device.label.toLowerCase().includes("triple") &&
+              !device.label.toLowerCase().includes("dual")
+          );
+
+        // Create filtered list with front camera first (if available)
+        const filteredDevices = [];
+        if (frontCamera) filteredDevices.push(frontCamera);
+        if (backCamera && backCamera !== frontCamera)
+          filteredDevices.push(backCamera);
+
+        // If we couldn't find specific cameras, just use the first two
+        if (filteredDevices.length === 0) {
+          console.log(
+            "Could not identify specific cameras, using first two devices"
+          );
+          filteredDevices.push(videoInputs[0]);
+          if (videoInputs.length > 1) filteredDevices.push(videoInputs[1]);
+        }
+
+        console.log("Filtered video devices for iOS:", filteredDevices);
+        setVideoDevices(filteredDevices);
+      } else {
+        // For non-iOS or when there are only 1-2 cameras, use all available devices
+        setVideoDevices(videoInputs);
+      }
     };
 
     navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange);
@@ -437,6 +553,41 @@ export const Canvas: React.FC = () => {
     }, 50);
   }, [videoDevices, currentDeviceIndex]);
 
+  // Create a high-resolution canvas for export
+  const createHighResCanvas = (images: ImageType[], scale: number = 2) => {
+    // Create a canvas with all images
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) return null;
+
+    // Set canvas size to match the container but at higher resolution
+    canvas.width = window.innerWidth * scale;
+    canvas.height = window.innerHeight * scale;
+
+    // Fill with white background
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Scale the context to draw everything at higher resolution
+    ctx.scale(scale, scale);
+
+    // Draw all images onto the canvas
+    images.forEach((image) => {
+      const img = new Image();
+      img.src = image.src;
+      ctx.drawImage(
+        img,
+        image.position.x,
+        image.position.y,
+        image.size.width,
+        image.size.height
+      );
+    });
+
+    return canvas;
+  };
+
   const handleDownload = useCallback(() => {
     console.log("📥 Canvas: handleDownload started");
     if (images.length === 0) {
@@ -444,54 +595,34 @@ export const Canvas: React.FC = () => {
       return;
     }
 
-    // Create a canvas with all images
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-
-    if (ctx) {
-      // Set canvas size to match the container
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-
-      // Fill with white background
-      ctx.fillStyle = "white";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Draw all images onto the canvas
-      images.forEach((image) => {
-        const img = new Image();
-        img.src = image.src;
-        ctx.drawImage(
-          img,
-          image.position.x,
-          image.position.y,
-          image.size.width,
-          image.size.height
-        );
-      });
-
-      // Convert to blob and download
-      canvas.toBlob((blob) => {
-        if (blob) {
-          console.log("✅ Canvas: Blob created successfully for download");
-          try {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "slingshot-collage.png";
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            console.log("✅ Canvas: Download initiated");
-          } catch (error) {
-            console.error("❌ Canvas: Error downloading:", error);
-          }
-        } else {
-          console.error("❌ Canvas: Failed to create blob for download");
-        }
-      }, "image/png");
+    // Create a high-resolution canvas (3x scale for download)
+    const canvas = createHighResCanvas(images, 3);
+    if (!canvas) {
+      console.error("Failed to create canvas for download");
+      return;
     }
+
+    // Convert to blob and download
+    canvas.toBlob((blob) => {
+      if (blob) {
+        console.log("✅ Canvas: Blob created successfully for download");
+        try {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "slingshot-collage.png";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          console.log("✅ Canvas: Download initiated");
+        } catch (error) {
+          console.error("❌ Canvas: Error downloading:", error);
+        }
+      } else {
+        console.error("❌ Canvas: Failed to create blob for download");
+      }
+    }, "image/png");
   }, [images]);
 
   const handleShare = useCallback(() => {
@@ -501,119 +632,97 @@ export const Canvas: React.FC = () => {
       return;
     }
 
-    // Create a canvas with all images
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
+    // Create a high-resolution canvas (2x scale for sharing)
+    const canvas = createHighResCanvas(images, 2);
+    if (!canvas) {
+      console.error("Failed to create canvas for sharing");
+      return;
+    }
 
-    if (ctx) {
-      // Set canvas size to match the container
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+    // Convert to blob and share
+    canvas.toBlob(async (blob) => {
+      if (blob) {
+        console.log("✅ Canvas: Blob created successfully for sharing");
+        try {
+          // Check if we're on iOS Safari
+          const isIOS =
+            /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+            !(window as any).MSStream;
+          const isSafari = /^((?!chrome|android).)*safari/i.test(
+            navigator.userAgent
+          );
 
-      // Fill with white background
-      ctx.fillStyle = "white";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+          console.log(
+            `📱 Canvas: Device detection - isIOS: ${isIOS}, isSafari: ${isSafari}`
+          );
+          console.log(
+            `🌐 Canvas: navigator.share available: ${!!navigator.share}`
+          );
+          console.log(
+            `🌐 Canvas: navigator.canShare available: ${!!(navigator as any)
+              .canShare}`
+          );
 
-      // Draw all images onto the canvas
-      images.forEach((image) => {
-        const img = new Image();
-        img.src = image.src;
-        ctx.drawImage(
-          img,
-          image.position.x,
-          image.position.y,
-          image.size.width,
-          image.size.height
-        );
-      });
+          const websiteUrl = "https://slingshot-camera.vercel.app/";
+          // No additional text, just the URL
 
-      // Convert to blob and share
-      canvas.toBlob(async (blob) => {
-        if (blob) {
-          console.log("✅ Canvas: Blob created successfully for sharing");
-          try {
-            // Check if we're on iOS Safari
-            const isIOS =
-              /iPad|iPhone|iPod/.test(navigator.userAgent) &&
-              !(window as any).MSStream;
-            const isSafari = /^((?!chrome|android).)*safari/i.test(
-              navigator.userAgent
-            );
+          if (isIOS && isSafari && (navigator as any).canShare) {
+            // Use iOS Safari specific share API
+            const file = new File([blob], "slingshot-collage.png", {
+              type: "image/png",
+            });
 
-            console.log(
-              `📱 Canvas: Device detection - isIOS: ${isIOS}, isSafari: ${isSafari}`
-            );
-            console.log(
-              `🌐 Canvas: navigator.share available: ${!!navigator.share}`
-            );
-            console.log(
-              `🌐 Canvas: navigator.canShare available: ${!!(navigator as any)
-                .canShare}`
-            );
+            const shareData = {
+              files: [file],
+              url: websiteUrl,
+              // No text field to keep it minimal
+            };
 
-            const websiteUrl = "https://slingshot-camera.vercel.app/";
-            const shareText = `Check out my Slingshot collage! ${websiteUrl}`;
+            console.log("📲 Canvas: Attempting iOS Safari share");
 
-            if (isIOS && isSafari && (navigator as any).canShare) {
-              // Use iOS Safari specific share API
-              const file = new File([blob], "slingshot-collage.png", {
-                type: "image/png",
-              });
-
-              const shareData = {
-                files: [file],
-                text: shareText,
-                url: websiteUrl,
-              };
-
-              console.log("📲 Canvas: Attempting iOS Safari share");
-
-              if ((navigator as any).canShare(shareData)) {
-                console.log(
-                  "👍 Canvas: iOS Safari canShare returned true, calling share()"
-                );
-                await (navigator as any).share(shareData);
-                console.log("✅ Canvas: Share completed successfully");
-              } else {
-                console.log("File sharing not supported on this device");
-                // Fallback to regular Web Share API without files
-                await navigator.share({
-                  title: "Slingshot Collage",
-                  text: shareText,
-                  url: websiteUrl,
-                });
-              }
-            } else if (navigator.share) {
-              console.log("📲 Canvas: Attempting standard Web Share API");
-              // Standard Web Share API
-              const file = new File([blob], "slingshot-collage.png", {
-                type: "image/png",
-              });
-              await navigator.share({
-                files: [file],
-                title: "Slingshot Collage",
-                text: shareText,
-                url: websiteUrl,
-              });
+            if ((navigator as any).canShare(shareData)) {
+              console.log(
+                "👍 Canvas: iOS Safari canShare returned true, calling share()"
+              );
+              await (navigator as any).share(shareData);
               console.log("✅ Canvas: Share completed successfully");
             } else {
-              console.log(
-                "❌ Canvas: Web Share API not supported, falling back to download"
-              );
-              // Fallback for browsers without Web Share API - download the image
-              handleDownload();
+              console.log("File sharing not supported on this device");
+              // Fallback to regular Web Share API without files
+              await navigator.share({
+                url: websiteUrl,
+                // No title or text fields to keep it minimal
+              });
             }
-          } catch (error) {
-            console.error("❌ Canvas: Error sharing:", error);
-            // If sharing fails, fall back to download
+          } else if (navigator.share) {
+            console.log("📲 Canvas: Attempting standard Web Share API");
+            // Standard Web Share API
+            const file = new File([blob], "slingshot-collage.png", {
+              type: "image/png",
+            });
+            await navigator.share({
+              files: [file],
+              url: websiteUrl,
+              // No title or text fields to keep it minimal
+            });
+            console.log("✅ Canvas: Share completed successfully");
+          } else {
+            console.log(
+              "❌ Canvas: Web Share API not supported, falling back to download"
+            );
+            // Fallback for browsers without Web Share API - download the image
             handleDownload();
           }
-        } else {
-          console.error("❌ Canvas: Failed to create blob for sharing");
+        } catch (error) {
+          console.error("❌ Canvas: Error sharing:", error);
+          // If sharing fails, fall back to download
+          handleDownload();
         }
-      }, "image/png");
-    }
-  }, [images]);
+      } else {
+        console.error("❌ Canvas: Failed to create blob for sharing");
+      }
+    }, "image/png");
+  }, [images, handleDownload]);
 
   // Add a handler for directly selecting a camera device
   const handleSelectDevice = useCallback(
