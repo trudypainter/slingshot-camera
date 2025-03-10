@@ -21,7 +21,16 @@ export function useIsMobile() {
         );
 
       // Consider it mobile if either condition is true
-      setIsMobile(isMobileBySize || isMobileByUserAgent);
+      const newIsMobile = isMobileBySize || isMobileByUserAgent;
+
+      console.log("📱 useIsMobile hook:");
+      console.log(`  - Window width: ${window.innerWidth}px`);
+      console.log(`  - Mobile by size: ${isMobileBySize}`);
+      console.log(`  - User agent: ${navigator.userAgent}`);
+      console.log(`  - Mobile by user agent: ${isMobileByUserAgent}`);
+      console.log(`  - Final isMobile value: ${newIsMobile}`);
+
+      setIsMobile(newIsMobile);
     };
 
     mql.addEventListener("change", onChange);

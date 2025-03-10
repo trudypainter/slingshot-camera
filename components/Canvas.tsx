@@ -252,6 +252,37 @@ export const Canvas: React.FC = () => {
   // Touch event handlers with improved coordinate calculation
   const handleTouchStart = useCallback(
     (e: React.TouchEvent<HTMLDivElement>) => {
+      // Check if the touch is on a button or other interactive element
+      const target = e.target as HTMLElement;
+      const path = Array.from(e.nativeEvent.composedPath());
+
+      // Allow touches on buttons, inputs, and the MenuBar
+      const isInteractiveElement = path.some((el) => {
+        if (el instanceof HTMLElement) {
+          // Check for buttons or other interactive elements
+          if (
+            el.tagName === "BUTTON" ||
+            el.tagName === "INPUT" ||
+            el.tagName === "A" ||
+            el.tagName === "SELECT" ||
+            (el.classList.contains("fixed") &&
+              el.classList.contains("bottom-4")) // MenuBar
+          ) {
+            return true;
+          }
+        }
+        return false;
+      });
+
+      // If touch is on an interactive element, don't start dragging
+      if (isInteractiveElement) {
+        console.log(
+          "👍 Canvas: Touch on interactive element, not starting drag",
+          target.tagName
+        );
+        return;
+      }
+
       // Prevent default to avoid scrolling and zooming
       e.preventDefault();
 
@@ -272,6 +303,37 @@ export const Canvas: React.FC = () => {
 
   const handleTouchMove = useCallback(
     (e: React.TouchEvent<HTMLDivElement>) => {
+      // Check if the touch is on a button or other interactive element
+      const target = e.target as HTMLElement;
+      const path = Array.from(e.nativeEvent.composedPath());
+
+      // Allow touches on buttons, inputs, and the MenuBar
+      const isInteractiveElement = path.some((el) => {
+        if (el instanceof HTMLElement) {
+          // Check for buttons or other interactive elements
+          if (
+            el.tagName === "BUTTON" ||
+            el.tagName === "INPUT" ||
+            el.tagName === "A" ||
+            el.tagName === "SELECT" ||
+            (el.classList.contains("fixed") &&
+              el.classList.contains("bottom-4")) // MenuBar
+          ) {
+            return true;
+          }
+        }
+        return false;
+      });
+
+      // If touch is on an interactive element, don't prevent default
+      if (isInteractiveElement) {
+        console.log(
+          "👍 Canvas: Touch move on interactive element, allowing default",
+          target.tagName
+        );
+        return;
+      }
+
       // Prevent default to avoid scrolling and zooming
       e.preventDefault();
 
@@ -292,6 +354,37 @@ export const Canvas: React.FC = () => {
 
   const handleTouchEnd = useCallback(
     (e: React.TouchEvent<HTMLDivElement>) => {
+      // Check if the touch is on a button or other interactive element
+      const target = e.target as HTMLElement;
+      const path = Array.from(e.nativeEvent.composedPath());
+
+      // Allow touches on buttons, inputs, and the MenuBar
+      const isInteractiveElement = path.some((el) => {
+        if (el instanceof HTMLElement) {
+          // Check for buttons or other interactive elements
+          if (
+            el.tagName === "BUTTON" ||
+            el.tagName === "INPUT" ||
+            el.tagName === "A" ||
+            el.tagName === "SELECT" ||
+            (el.classList.contains("fixed") &&
+              el.classList.contains("bottom-4")) // MenuBar
+          ) {
+            return true;
+          }
+        }
+        return false;
+      });
+
+      // If touch is on an interactive element, don't prevent default
+      if (isInteractiveElement) {
+        console.log(
+          "👍 Canvas: Touch end on interactive element, allowing default",
+          target.tagName
+        );
+        return;
+      }
+
       // Prevent default to avoid any unwanted behaviors
       e.preventDefault();
       console.log("Touch end, ending drag");
@@ -301,14 +394,20 @@ export const Canvas: React.FC = () => {
   );
 
   const handleUndo = useCallback(() => {
-    setImages((prevImages) => prevImages.slice(0, -1));
-  }, []);
+    console.log("🔄 Canvas: handleUndo called");
+    if (images.length > 0) {
+      setImages((prevImages) => prevImages.slice(0, -1));
+    }
+  }, [images]);
 
   const handleClearCanvas = useCallback(() => {
+    console.log("🧹 Canvas: handleClearCanvas called");
     setImages([]);
   }, []);
 
   const handleToggleCamera = useCallback(() => {
+    console.log("📸 Canvas: handleToggleCamera called");
+
     if (videoDevices.length === 0) {
       console.log("No video devices available");
       return;
@@ -339,8 +438,9 @@ export const Canvas: React.FC = () => {
   }, [videoDevices, currentDeviceIndex]);
 
   const handleDownload = useCallback(() => {
+    console.log("📥 Canvas: handleDownload started");
     if (images.length === 0) {
-      console.log("No images to download");
+      console.log("❌ Canvas: No images to download");
       return;
     }
 
@@ -373,6 +473,7 @@ export const Canvas: React.FC = () => {
       // Convert to blob and download
       canvas.toBlob((blob) => {
         if (blob) {
+          console.log("✅ Canvas: Blob created successfully for download");
           try {
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
@@ -382,17 +483,21 @@ export const Canvas: React.FC = () => {
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+            console.log("✅ Canvas: Download initiated");
           } catch (error) {
-            console.error("Error downloading:", error);
+            console.error("❌ Canvas: Error downloading:", error);
           }
+        } else {
+          console.error("❌ Canvas: Failed to create blob for download");
         }
       }, "image/png");
     }
   }, [images]);
 
   const handleShare = useCallback(() => {
+    console.log("📤 Canvas: handleShare started");
     if (images.length === 0) {
-      console.log("No images to share");
+      console.log("❌ Canvas: No images to share");
       return;
     }
 
@@ -425,6 +530,7 @@ export const Canvas: React.FC = () => {
       // Convert to blob and share
       canvas.toBlob(async (blob) => {
         if (blob) {
+          console.log("✅ Canvas: Blob created successfully for sharing");
           try {
             // Check if we're on iOS Safari
             const isIOS =
@@ -432,6 +538,17 @@ export const Canvas: React.FC = () => {
               !(window as any).MSStream;
             const isSafari = /^((?!chrome|android).)*safari/i.test(
               navigator.userAgent
+            );
+
+            console.log(
+              `📱 Canvas: Device detection - isIOS: ${isIOS}, isSafari: ${isSafari}`
+            );
+            console.log(
+              `🌐 Canvas: navigator.share available: ${!!navigator.share}`
+            );
+            console.log(
+              `🌐 Canvas: navigator.canShare available: ${!!(navigator as any)
+                .canShare}`
             );
 
             const websiteUrl = "https://slingshot-camera.vercel.app/";
@@ -449,8 +566,14 @@ export const Canvas: React.FC = () => {
                 url: websiteUrl,
               };
 
+              console.log("📲 Canvas: Attempting iOS Safari share");
+
               if ((navigator as any).canShare(shareData)) {
+                console.log(
+                  "👍 Canvas: iOS Safari canShare returned true, calling share()"
+                );
                 await (navigator as any).share(shareData);
+                console.log("✅ Canvas: Share completed successfully");
               } else {
                 console.log("File sharing not supported on this device");
                 // Fallback to regular Web Share API without files
@@ -461,6 +584,7 @@ export const Canvas: React.FC = () => {
                 });
               }
             } else if (navigator.share) {
+              console.log("📲 Canvas: Attempting standard Web Share API");
               // Standard Web Share API
               const file = new File([blob], "slingshot-collage.png", {
                 type: "image/png",
@@ -471,15 +595,21 @@ export const Canvas: React.FC = () => {
                 text: shareText,
                 url: websiteUrl,
               });
+              console.log("✅ Canvas: Share completed successfully");
             } else {
+              console.log(
+                "❌ Canvas: Web Share API not supported, falling back to download"
+              );
               // Fallback for browsers without Web Share API - download the image
               handleDownload();
             }
           } catch (error) {
-            console.error("Error sharing:", error);
+            console.error("❌ Canvas: Error sharing:", error);
             // If sharing fails, fall back to download
             handleDownload();
           }
+        } else {
+          console.error("❌ Canvas: Failed to create blob for sharing");
         }
       }, "image/png");
     }
@@ -488,6 +618,7 @@ export const Canvas: React.FC = () => {
   // Add a handler for directly selecting a camera device
   const handleSelectDevice = useCallback(
     (index: number) => {
+      console.log(`📱 Canvas: handleSelectDevice called with index ${index}`);
       if (
         index >= 0 &&
         index < videoDevices.length &&
@@ -521,7 +652,39 @@ export const Canvas: React.FC = () => {
   useEffect(() => {
     // Function to prevent default behavior for touch events
     const preventDefault = (e: TouchEvent) => {
-      e.preventDefault();
+      console.log("🚫 Canvas: preventDefault called on TouchEvent", e.type);
+
+      // Check if the touch is on a button or other interactive element
+      const target = e.target as HTMLElement;
+      const path = e.composedPath();
+
+      // Allow touches on buttons, inputs, and the MenuBar
+      const isInteractiveElement = path.some((el) => {
+        if (el instanceof HTMLElement) {
+          // Check for buttons or other interactive elements
+          if (
+            el.tagName === "BUTTON" ||
+            el.tagName === "INPUT" ||
+            el.tagName === "A" ||
+            el.tagName === "SELECT" ||
+            (el.classList.contains("fixed") &&
+              el.classList.contains("bottom-4")) // MenuBar
+          ) {
+            return true;
+          }
+        }
+        return false;
+      });
+
+      // Only prevent default if not on an interactive element
+      if (!isInteractiveElement) {
+        e.preventDefault();
+      } else {
+        console.log(
+          "👍 Canvas: Allowing touch event on interactive element",
+          target.tagName
+        );
+      }
     };
 
     // Add meta viewport tag to prevent scaling
@@ -563,6 +726,45 @@ export const Canvas: React.FC = () => {
       document.body.style.touchAction = "";
       document.removeEventListener("touchmove", preventDefault);
       document.removeEventListener("touchstart", preventDefault);
+    };
+  }, []);
+
+  // Add this to the useEffect where touch events are set up
+  useEffect(() => {
+    // Debug touch events
+    console.log("🖐️ Setting up touch event debugging");
+
+    const debugTouchStart = (e: TouchEvent) => {
+      console.log("👆 touchstart event detected", {
+        target: e.target,
+        touches: e.touches.length,
+        path: e
+          .composedPath()
+          .map((el) => {
+            if (el instanceof HTMLElement) {
+              return `${el.tagName}${el.id ? "#" + el.id : ""}${
+                el.className ? "." + el.className.replace(/\s+/g, ".") : ""
+              }`;
+            }
+            return String(el);
+          })
+          .join(" > "),
+      });
+    };
+
+    const debugTouchEnd = (e: TouchEvent) => {
+      console.log("👇 touchend event detected", {
+        target: e.target,
+        touches: e.touches.length,
+      });
+    };
+
+    document.addEventListener("touchstart", debugTouchStart, { passive: true });
+    document.addEventListener("touchend", debugTouchEnd, { passive: true });
+
+    return () => {
+      document.removeEventListener("touchstart", debugTouchStart);
+      document.removeEventListener("touchend", debugTouchEnd);
     };
   }, []);
 
