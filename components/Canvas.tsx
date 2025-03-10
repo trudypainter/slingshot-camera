@@ -101,115 +101,118 @@ export const Canvas: React.FC = () => {
     (x: number, y: number) => {
       if (isDragging && dragStart) {
         setDragEnd({ x, y });
-        setViewfinderRect({
-          left: Math.min(dragStart.x, x),
-          top: Math.min(dragStart.y, y),
-          width: Math.abs(x - dragStart.x),
-          height: Math.abs(y - dragStart.y),
-        });
+
+        // Calculate viewfinder rectangle
+        const left = Math.min(dragStart.x, x);
+        const top = Math.min(dragStart.y, y);
+        const width = Math.abs(x - dragStart.x);
+        const height = Math.abs(y - dragStart.y);
+
+        setViewfinderRect({ left, top, width, height });
       }
     },
     [isDragging, dragStart]
   );
 
-  // Common function to end drag (for both mouse and touch)
+  // Common function to end drag and capture image
   const endDrag = useCallback(() => {
-    setIsCameraVisible(false);
+    if (isDragging && dragStart && dragEnd) {
+      // Only capture if the drag area is large enough
+      const minSize = 20; // Minimum size in pixels
+      if (
+        Math.abs(dragEnd.x - dragStart.x) > minSize &&
+        Math.abs(dragEnd.y - dragStart.y) > minSize
+      ) {
+        setIsCameraVisible(false);
 
-    if (dragStart && dragEnd && cameraRef.current) {
-      const newImageId = Date.now().toString();
-      const canvas = document.createElement("canvas");
-      const context = canvas.getContext("2d");
-      const video = cameraRef.current.querySelector("video");
+        if (dragStart && dragEnd && cameraRef.current) {
+          const newImageId = Date.now().toString();
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          const video = cameraRef.current.querySelector("video");
 
-      if (context && video) {
-        const viewfinderWidth = Math.abs(dragEnd.x - dragStart.x);
-        const viewfinderHeight = Math.abs(dragEnd.y - dragStart.y);
+          if (context && video) {
+            const viewfinderWidth = Math.abs(dragEnd.x - dragStart.x);
+            const viewfinderHeight = Math.abs(dragEnd.y - dragStart.y);
 
-        // Don't capture if the drag area is too small
-        if (viewfinderWidth < 10 || viewfinderHeight < 10) {
-          setIsDragging(false);
-          setDragStart(null);
-          setDragEnd(null);
-          return;
+            // Set canvas size to match the viewfinder
+            canvas.width = viewfinderWidth;
+            canvas.height = viewfinderHeight;
+
+            // Calculate the aspect ratios
+            const viewfinderAspectRatio = viewfinderWidth / viewfinderHeight;
+            const videoAspectRatio = video.videoWidth / video.videoHeight;
+
+            // Variables for source and destination rectangles
+            let sx, sy, sw, sh, dx, dy, dw, dh;
+
+            // Calculate the source rectangle (what part of the video to capture)
+            // and the destination rectangle (where to place it on the canvas)
+            if (viewfinderAspectRatio > videoAspectRatio) {
+              // Viewfinder is wider than video
+              sw = video.videoWidth;
+              sh = video.videoWidth / viewfinderAspectRatio;
+              sx = 0;
+              sy = (video.videoHeight - sh) / 2;
+
+              // Destination is the full canvas
+              dx = 0;
+              dy = 0;
+              dw = canvas.width;
+              dh = canvas.height;
+            } else {
+              // Viewfinder is taller than video
+              sw = video.videoHeight * viewfinderAspectRatio;
+              sh = video.videoHeight;
+              sx = (video.videoWidth - sw) / 2;
+              sy = 0;
+
+              // Destination is the full canvas
+              dx = 0;
+              dy = 0;
+              dw = canvas.width;
+              dh = canvas.height;
+            }
+
+            // Mirror the image horizontally
+            context.translate(canvas.width, 0);
+            context.scale(-1, 1);
+
+            // Draw the video onto the canvas, properly cropped and positioned
+            context.drawImage(
+              video,
+              sx,
+              sy,
+              sw,
+              sh, // Source rectangle (what part of the video to capture)
+              0,
+              0,
+              canvas.width,
+              canvas.height // Destination rectangle (where to place it on the canvas)
+            );
+
+            const newImage: ImageType = {
+              id: newImageId,
+              src: canvas.toDataURL("image/jpeg"),
+              position: {
+                x: Math.min(dragStart.x, dragEnd.x),
+                y: Math.min(dragStart.y, dragEnd.y),
+              },
+              size: {
+                width: viewfinderWidth,
+                height: viewfinderHeight,
+              },
+              mirrored: true,
+            };
+            setImages((prevImages) => [...prevImages, newImage]);
+          }
         }
-
-        // Set canvas size to match the viewfinder
-        canvas.width = viewfinderWidth;
-        canvas.height = viewfinderHeight;
-
-        // Calculate the aspect ratios
-        const viewfinderAspectRatio = viewfinderWidth / viewfinderHeight;
-        const videoAspectRatio = video.videoWidth / video.videoHeight;
-
-        // Variables for source and destination rectangles
-        let sx, sy, sw, sh, dx, dy, dw, dh;
-
-        // Calculate the source rectangle (what part of the video to capture)
-        // and the destination rectangle (where to place it on the canvas)
-        if (viewfinderAspectRatio > videoAspectRatio) {
-          // Viewfinder is wider than video
-          sw = video.videoWidth;
-          sh = video.videoWidth / viewfinderAspectRatio;
-          sx = 0;
-          sy = (video.videoHeight - sh) / 2;
-
-          // Destination is the full canvas
-          dx = 0;
-          dy = 0;
-          dw = canvas.width;
-          dh = canvas.height;
-        } else {
-          // Viewfinder is taller than video
-          sw = video.videoHeight * viewfinderAspectRatio;
-          sh = video.videoHeight;
-          sx = (video.videoWidth - sw) / 2;
-          sy = 0;
-
-          // Destination is the full canvas
-          dx = 0;
-          dy = 0;
-          dw = canvas.width;
-          dh = canvas.height;
-        }
-
-        // Mirror the image horizontally
-        context.translate(canvas.width, 0);
-        context.scale(-1, 1);
-
-        // Draw the video onto the canvas, properly cropped and positioned
-        context.drawImage(
-          video,
-          sx,
-          sy,
-          sw,
-          sh, // Source rectangle (what part of the video to capture)
-          0,
-          0,
-          canvas.width,
-          canvas.height // Destination rectangle (where to place it on the canvas)
-        );
-
-        const newImage: ImageType = {
-          id: newImageId,
-          src: canvas.toDataURL("image/jpeg"),
-          position: {
-            x: Math.min(dragStart.x, dragEnd.x),
-            y: Math.min(dragStart.y, dragEnd.y),
-          },
-          size: {
-            width: viewfinderWidth,
-            height: viewfinderHeight,
-          },
-          mirrored: true,
-        };
-        setImages((prevImages) => [...prevImages, newImage]);
       }
     }
     setIsDragging(false);
     setDragStart(null);
     setDragEnd(null);
-  }, [dragStart, dragEnd]);
+  }, [dragStart, dragEnd, isDragging]);
 
   // Mouse event handlers
   const handleMouseDown = useCallback(
@@ -244,14 +247,21 @@ export const Canvas: React.FC = () => {
     endDrag();
   }, [endDrag]);
 
-  // Touch event handlers
+  // Touch event handlers with improved coordinate calculation
   const handleTouchStart = useCallback(
     (e: React.TouchEvent<HTMLDivElement>) => {
+      // Prevent default to avoid scrolling and zooming
+      e.preventDefault();
+
       if (canvasRef.current && e.touches.length > 0) {
         const rect = canvasRef.current.getBoundingClientRect();
         const touch = e.touches[0];
+
+        // Calculate position relative to the canvas
         const x = touch.clientX - rect.left;
         const y = touch.clientY - rect.top;
+
+        console.log(`Touch start at x: ${x}, y: ${y}`);
         startDrag(x, y);
       }
     },
@@ -260,20 +270,33 @@ export const Canvas: React.FC = () => {
 
   const handleTouchMove = useCallback(
     (e: React.TouchEvent<HTMLDivElement>) => {
+      // Prevent default to avoid scrolling and zooming
+      e.preventDefault();
+
       if (isDragging && canvasRef.current && e.touches.length > 0) {
         const rect = canvasRef.current.getBoundingClientRect();
         const touch = e.touches[0];
+
+        // Calculate position relative to the canvas
         const x = touch.clientX - rect.left;
         const y = touch.clientY - rect.top;
+
+        console.log(`Touch move to x: ${x}, y: ${y}`);
         updateDrag(x, y);
       }
     },
     [isDragging, updateDrag]
   );
 
-  const handleTouchEnd = useCallback(() => {
-    endDrag();
-  }, [endDrag]);
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      // Prevent default to avoid any unwanted behaviors
+      e.preventDefault();
+      console.log("Touch end, ending drag");
+      endDrag();
+    },
+    [endDrag]
+  );
 
   const handleUndo = useCallback(() => {
     setImages((prevImages) => prevImages.slice(0, -1));
@@ -362,10 +385,64 @@ export const Canvas: React.FC = () => {
     }
   }, [images]);
 
+  // Add this useEffect to prevent scrolling on mobile
+  useEffect(() => {
+    // Function to prevent default behavior for touch events
+    const preventDefault = (e: TouchEvent) => {
+      e.preventDefault();
+    };
+
+    // Add meta viewport tag to prevent scaling
+    const setViewportMeta = () => {
+      let viewportMeta = document.querySelector(
+        'meta[name="viewport"]'
+      ) as HTMLMetaElement;
+      if (!viewportMeta) {
+        viewportMeta = document.createElement("meta");
+        viewportMeta.name = "viewport";
+        document.head.appendChild(viewportMeta);
+      }
+      viewportMeta.setAttribute(
+        "content",
+        "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+      );
+    };
+
+    // Set viewport meta tag
+    setViewportMeta();
+
+    // Prevent scrolling on the document body
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.width = "100%";
+    document.body.style.height = "100%";
+    document.body.style.touchAction = "none";
+
+    // Add event listeners to prevent default touch behavior
+    document.addEventListener("touchmove", preventDefault, { passive: false });
+    document.addEventListener("touchstart", preventDefault, { passive: false });
+
+    return () => {
+      // Cleanup when component unmounts
+      document.body.style.overflow = "";
+      document.body.style.position = "";
+      document.body.style.width = "";
+      document.body.style.height = "";
+      document.body.style.touchAction = "";
+      document.removeEventListener("touchmove", preventDefault);
+      document.removeEventListener("touchstart", preventDefault);
+    };
+  }, []);
+
   return (
     <div
       ref={canvasRef}
-      className="relative w-screen h-screen overflow-hidden bg-white cursor-crosshair"
+      className="fixed inset-0 w-screen h-screen bg-white cursor-crosshair touch-none"
+      style={{
+        WebkitTouchCallout: "none",
+        WebkitUserSelect: "none",
+        touchAction: "none",
+      }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
